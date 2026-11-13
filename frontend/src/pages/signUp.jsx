@@ -1,39 +1,66 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useContext } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 import background from "../assets/background.png";
+import { UserDataContext } from "../context/UserContext";
+import axios from "axios";
 
 function SignUp() {
     const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         name: "",
         email: "",
-        password: ""
+        password: "",
     });
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
+
+    const { serverUrl, setUserData } = useContext(UserDataContext);
+    const navigate = useNavigate();
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
+        if (error) setError("");
     };
 
-    const handleSubmit = (e) => {
+    const handleSignUp = async (e) => {
         e.preventDefault();
-        // Submit handler logic
+        setError("");
+        setLoading(true);
+
+        try {
+            const { name, email, password } = formData;
+
+            const result = await axios.post(
+                `${serverUrl}/api/auth/signup`,
+                { name, email, password },
+                { withCredentials: true }
+            );
+
+            console.log("Signup success:", result.data);
+            if (setUserData) {
+                setUserData(result.data);
+            }
+            navigate("/");
+        } catch (err) {
+            console.error("Signup error:", err);
+            setError(err.response?.data?.message || "Failed to create account. Please try again.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
         <div
             className="w-full min-h-screen min-h-dvh bg-cover bg-center bg-no-repeat flex items-center justify-center p-4 sm:p-6 md:p-8"
             style={{ backgroundImage: `url(${background})` }}>
-            
             <form
-                onSubmit={handleSubmit}
+                onSubmit={handleSignUp}
                 className="
                     w-full
                     max-w-[440px]
                     p-6 sm:p-8
                     bg-[#17111F]/70
-                    -translate-y-20
-                    -translate-x-20
                     backdrop-blur-xl
                     rounded-2xl
                     border border-[#D4AF72]/30
@@ -48,6 +75,12 @@ function SignUp() {
                 <p className="text-center text-gray-300 text-xs sm:text-sm mb-6 sm:mb-8">
                     Create your account
                 </p>
+
+                {error && (
+                    <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/40 text-red-200 text-xs sm:text-sm text-center">
+                        {error}
+                    </div>
+                )}
 
                 {/* Name */}
                 <div className="mb-4">
@@ -117,9 +150,10 @@ function SignUp() {
                 {/* Submit Button */}
                 <button
                     type="submit"
-                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#D4AF72] to-[#E8C98A] text-black font-semibold text-sm sm:text-base tracking-wide hover:opacity-95 active:scale-[0.99] transition-all shadow-md shadow-[#D4AF72]/20 cursor-pointer"
+                    disabled={loading}
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#D4AF72] to-[#E8C98A] text-black font-semibold text-sm sm:text-base tracking-wide hover:opacity-95 active:scale-[0.99] transition-all shadow-md shadow-[#D4AF72]/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    Sign Up
+                    {loading ? "Creating Account..." : "Sign Up"}
                 </button>
 
                 {/* Switch to Sign In */}

@@ -37,7 +37,7 @@ export const signup=async (req,res)=>{
     const token=genToken(user._id);
 
     res.cookie("token",token,{
-        httponly:true,
+        httpOnly:true,
         maxAge:10*60*60*1000,//value given in millisecond
         sameSite:"strict"
     })
@@ -72,7 +72,7 @@ export const login=async (req,res)=>{
             )
         }
 
-        const matchedPassword=bcrypt.compare(password,user?.password);
+        const matchedPassword = await bcrypt.compare(password, user?.password);
         if(!matchedPassword){
             return res.status(400).json({
                 message:"Incorrect password"
@@ -81,7 +81,7 @@ export const login=async (req,res)=>{
 
         const token=genToken(user._id);
         res.cookie("token",token,{
-            httponly:true,
+            httpOnly:true,
             maxAge:10*60*60*1000,
             sameSite:"strict"
         });
