@@ -364,4 +364,5 @@ flowchart TD
 | **2026-11-17** | **App Routing & Dashboard** | Fixed hook and JSX syntax errors in `App.jsx`. Added `Home.jsx` (assistant chat) and `Customize.jsx` (persona setup). Built routing guards. |
 | **2026-11-17** | **Agent Assets & Switcher** | Imported and configured 4 local agent avatars (`agent1.png` to `agent4.png`) across `Customize.jsx` and `Home.jsx` with active preview switching. |
 | **2026-11-17** | **Customize & Home UI Redesign** | Transformed Customize Assistant into a spacious 2×2 grid of large (180–220px) rounded-rectangle cards for Astra Nova, Elara, Orion, and Auron with glowing gold borders, fixed names, matching custom upload card, and upgraded the Home dashboard UI. |
+| **2026-11-17** | **Documentation** | Authored full production README.md featuring architecture breakdown, tech badges, directory tree, setup guide, API reference, security patterns, and links to living notes. |
 
