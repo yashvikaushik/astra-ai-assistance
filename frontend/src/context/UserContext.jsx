@@ -16,8 +16,10 @@ export default function UserContextProvider({ children }) {
                     withCredentials: true,
                 });
                 setUserData(res.data);
-            } catch {
+                console.log(res.data);
+            } catch(error) {
                 setUserData(null);
+                console.log(error);
             } finally {
                 setAuthLoading(false);
             }

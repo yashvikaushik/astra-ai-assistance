@@ -44,6 +44,7 @@ function SignUp() {
             navigate("/");
         } catch (err) {
             console.error("Signup error:", err);
+            setUserData(null);
             setError(err.response?.data?.message || "Failed to create account. Please try again.");
         } finally {
             setLoading(false);

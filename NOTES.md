@@ -142,27 +142,79 @@ flowchart TD
 ---
 
 ### B. User Sign-In Flow (`/signin`)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User (Browser)
+    participant Form as SignIn Component (signIn.jsx)
+    participant Context as UserContext (UserDataContext)
+    participant Server as Express Server (index.js & CORS)
+    participant Controller as Auth Controller (login)
+    participant DB as MongoDB Atlas (User Model)
+    participant Bcrypt as Bcrypt Utility
+    participant JWT as Token Generator (token.js)
+
+    User->>Form: Enters Email & Password, clicks "Sign In"
+    Form->>Form: e.preventDefault(), setLoading(true), destructure { email, password }
+    Form->>Server: POST /api/auth/signin (withCredentials: true)
+    
+    Server->>Server: Verify CORS origin & credentials, parse JSON body
+    Server->>Controller: Route to login(req, res)
+
+    Controller->>DB: User.findOne({ email })
+    alt User not found in database
+        DB-->>Controller: null
+        Controller-->>Form: 400 "User not found"
+        Form-->>User: Display error banner ("User not found"), setLoading(false)
+    else User exists
+        DB-->>Controller: User Document (including hashed password)
+        
+        Controller->>Bcrypt: await bcrypt.compare(password, user.password)
+        alt Password does not match
+            Bcrypt-->>Controller: false
+            Controller-->>Form: 400 "Incorrect password"
+            Form-->>User: Display error banner ("Incorrect password"), setLoading(false)
+        else Password is valid
+            Bcrypt-->>Controller: true
+            
+            Controller->>JWT: genToken(user._id)
+            JWT-->>Controller: Signed JWT string (7 days)
+            
+            Controller->>Server: Attach HTTP-Only Cookie ("token", 7 days, sameSite: strict)
+            Controller-->>Form: 200 OK { message: "User logged in successfully", user }
+            
+            Form->>Context: setUserData(result.data.user)
+            Form->>User: navigate("/") -> Redirect to Astra Dashboard
+        end
+    end
 ```
-[User Browser]
-       │
-       ▼ (1) Enters Email & Password
-[frontend/src/pages/signIn.jsx]
-       │
-       ▼ (2) POST request to ${serverUrl}/api/auth/signin
-       ▼
-[backend/controllers/auth.controller.js -> login()]
-       │
-       ├── (a) Find user by email in MongoDB
-       ├── (b) Await asynchronous password verification:
-       │       await bcrypt.compare(password, user.password)
-       ├── (c) If valid, generate JWT Token
-       └── (d) Attach "token" HTTP-Only cookie to response
-       │
-       ▼ (3) Response 200 OK: { message, user }
-[frontend/src/pages/signIn.jsx]
-       │
-       ▼ (4) Update UserDataContext: setUserData(result.data.user)
-       ▼ (5) navigate("/")
+
+#### Sign-In Architecture Flowchart
+
+```mermaid
+flowchart TD
+    A["User Submits Form<br/>(Email, Password)"] --> B["signIn.jsx: handleSignIn()<br/>Destructure { email, password }"]
+    B --> C["Axios POST to Backend<br/>http://localhost:5002/api/auth/signin<br/>withCredentials: true"]
+    
+    C --> D{"Express Server<br/>CORS & JSON Body Parser"}
+    D --> E{"auth.controller.js: login()<br/>Query Database by Email"}
+    
+    E --> F{"User.findOne({ email })"}
+    F -- User Not Found --> ERR1["400 'User not found'"]
+    
+    F -- User Exists --> G{"await bcrypt.compare()<br/>Verify Password Hash"}
+    G -- Invalid Password --> ERR2["400 'Incorrect password'"]
+    
+    G -- Password Matches --> H["Generate JWT Token<br/>genToken(user._id)"]
+    H --> I["Attach HTTP-Only Cookie<br/>res.cookie('token', token, { httpOnly: true, maxAge: 7d })"]
+    I --> J["200 OK Response<br/>{ message: 'User logged in successfully', user }"]
+    
+    ERR1 --> DISP["Display Error Banner<br/>on Form"]
+    ERR2 --> DISP
+    
+    J --> K["Update Global Context<br/>setUserData(user)"]
+    K --> L["Navigate to Dashboard<br/>navigate('/')"]
 ```
 
 ---
@@ -260,6 +312,29 @@ flowchart TD
 
 ---
 
+### 8. `try...catch` Block Statement vs. `Promise.catch()` Method
+- **The Issue**: In JavaScript, `try { ... } catch (error) { ... }` is a language **statement**, NOT an object or a function.
+- **The Pitfall**: Writing `try { ... }.catch((err) => { ... })` attempts to call `.catch()` as a method on the `try` block's closing brace.
+- **The Error**: JavaScript parsers throw `SyntaxError: Unexpected token '.'` or `'try' expected` / `Missing catch or finally after try`.
+- **Rule**:
+  - `try` blocks must be followed immediately by `catch (error) { ... }` or `finally { ... }` without a dot `.`.
+  - `.catch()` is only for Promises (e.g. `promise.then().catch()`).
+  ```javascript
+  // ❌ Syntax Error
+  try {
+      await cloudinary.uploader.upload(...);
+  }.catch((error) => { ... });
+
+  // ✅ Valid JavaScript
+  try {
+      await cloudinary.uploader.upload(...);
+  } catch (error) {
+      console.error(error);
+  }
+  ```
+
+---
+
 ## 5. API Reference & Contract
 
 | Endpoint | Method | Headers / Auth | Request Body | Response (Success) | Description |
@@ -268,6 +343,9 @@ flowchart TD
 | `/api/auth/signup` | `POST` | None | `{ name, email, password }` | `201 Created`: `{ message, user }` + Set-Cookie | Creates user, hashes password, sets auth cookie |
 | `/api/auth/signin` | `POST` | None | `{ email, password }` | `200 OK`: `{ message, user }` + Set-Cookie | Validates password, returns user data, sets auth cookie |
 | `/api/auth/logout` | `GET` | Auth Cookie | None | `200 OK`: `{ message: "Logged out successfully" }` | Clears HTTP-only token cookie |
+| `/api/auth/me` | `GET` | Auth Cookie | None | `200 OK`: `user` object | Validates JWT cookie and returns authenticated session |
+| `/api/user/currentuser` | `GET` | Auth Cookie | None | `200 OK`: `user` object | Retrieves user profile with assistant details |
+| `/api/user/update-assistant` | `POST` | Auth Cookie, Multipart | `FormData: { assistantName, assistantImage }` | `200 OK`: `{ message, user }` | Uploads avatar to Cloudinary & saves custom assistant persona |
 
 ---
 
@@ -282,4 +360,8 @@ flowchart TD
 | **2026-11-14** | **State & Auth** | Refactored `UserContext.jsx` into `UserDataContext` and `UserContextProvider`. Added global user state. Fixed global `window.name` trap in signup. |
 | **2026-11-14** | **Backend Security** | Added `await` to `bcrypt.compare` in login controller; updated CORS to support credentials; corrected cookie flags to `httpOnly: true`. |
 | **2026-11-14** | **Frontend Pages** | Implemented responsive `signIn.jsx` with Astra branding, accessible autofill, password toggle, and error banner feedback. |
+| **2026-11-17** | **Cloudinary & Persona** | Rectified `try...catch` syntax in `cloudinary.js`. Added Multer storage middleware and `/api/user/update-assistant` route. |
+| **2026-11-17** | **App Routing & Dashboard** | Fixed hook and JSX syntax errors in `App.jsx`. Added `Home.jsx` (assistant chat) and `Customize.jsx` (persona setup). Built routing guards. |
+| **2026-11-17** | **Agent Assets & Switcher** | Imported and configured 4 local agent avatars (`agent1.png` to `agent4.png`) across `Customize.jsx` and `Home.jsx` with active preview switching. |
+| **2026-11-17** | **Customize & Home UI Redesign** | Transformed Customize Assistant into a spacious 2×2 grid of large (180–220px) rounded-rectangle cards for Astra Nova, Elara, Orion, and Auron with glowing gold borders, fixed names, matching custom upload card, and upgraded the Home dashboard UI. |
 
