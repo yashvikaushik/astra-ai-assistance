@@ -333,6 +333,21 @@ flowchart TD
   }
   ```
 
+### 9. Google Gemini API URL Formatting & Duplicate Query Parameters
+- **The Issue**: When copying the sample REST endpoint from Google AI Studio / Google GenAI documentation, the snippet URL often includes the placeholder query param:
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=YOUR_API_KEY`
+- **The Pitfall**: Storing this complete URL in `.env` as `GEMINI_API_URL` while simultaneously storing `GEMINI_API_KEY` causes `gemini.js` to do:
+  ```javascript
+  const result = await axios.post(`${api_url}?key=${api_key}`, ...);
+  ```
+- **The Consequence**: The request URL evaluates to:
+  `.../generateContent?key=AQ...I_AQ?key=AQ...I_AQ`
+  The parser sees `?key=` appended to the existing key value, destroying the key string and causing Google's server to return `400 Bad Request: "API key not valid. Please pass a valid API key."`.
+- **The Fix**:
+  1. Set `GEMINI_API_URL` to the base endpoint without query parameters:
+     `GEMINI_API_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"`
+  2. In `gemini.js`, sanitize the URL with `rawUrl.split("?")[0]` before appending `?key=${apiKey}` to prevent accidental duplicate parameters.
+
 ---
 
 ## 5. API Reference & Contract
@@ -365,4 +380,5 @@ flowchart TD
 | **2026-11-17** | **Agent Assets & Switcher** | Imported and configured 4 local agent avatars (`agent1.png` to `agent4.png`) across `Customize.jsx` and `Home.jsx` with active preview switching. |
 | **2026-11-17** | **Customize & Home UI Redesign** | Transformed Customize Assistant into a spacious 2×2 grid of large (180–220px) rounded-rectangle cards for Astra Nova, Elara, Orion, and Auron with glowing gold borders, fixed names, matching custom upload card, and upgraded the Home dashboard UI. |
 | **2026-11-17** | **Documentation** | Authored full production README.md featuring architecture breakdown, tech badges, directory tree, setup guide, API reference, security patterns, and links to living notes. |
+| **2026-11-17** | **AI Pipeline & Gemini** | Resolved "API key is invalid" error in `gemini.js` caused by duplicated `?key=` query parameters when combining `GEMINI_API_URL` with `GEMINI_API_KEY`. Added URL sanitization and direct dotenv bootstrapping. |
 
