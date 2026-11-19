@@ -1,5 +1,6 @@
 import { useState, useContext, useRef, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+import axios from "axios";
 import { UserDataContext } from "../context/UserContext";
 import background from "../assets/background.png";
 import agent1 from "../assets/agent1.png";
@@ -13,10 +14,11 @@ import {
     FiZap,
     FiCode,
     FiMessageSquare,
+    FiExternalLink,
 } from "react-icons/fi";
 
 function Home() {
-    const { userData, authLoading, logout } = useContext(UserDataContext);
+    const { userData, authLoading, logout, serverUrl } = useContext(UserDataContext);
     const navigate = useNavigate();
 
     const [messages, setMessages] = useState([
@@ -28,12 +30,13 @@ function Home() {
     ]);
     const [prompt, setPrompt] = useState("");
     const [isListening, setIsListening] = useState(false);
+    const [isSending, setIsSending] = useState(false);
 
     const chatEndRef = useRef(null);
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [messages, isSending]);
 
     if (authLoading) {
         return (
@@ -56,9 +59,23 @@ function Home() {
     const currentAvatar = userData.assistantImage || agent1;
     const currentName = userData.assistantName || "Astra Nova";
 
-    const handleSendMessage = (textToSend) => {
+    const speakResponse = (text) => {
+        if ("speechSynthesis" in window && text) {
+            try {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                window.speechSynthesis.speak(utterance);
+            } catch (e) {
+                console.warn("Speech synthesis error:", e);
+            }
+        }
+    };
+
+    const handleSendMessage = async (textToSend) => {
         const text = textToSend || prompt;
-        if (!text.trim()) return;
+        if (!text.trim() || isSending) return;
 
         const userMsg = {
             role: "user",
@@ -68,16 +85,45 @@ function Home() {
 
         setMessages((prev) => [...prev, userMsg]);
         setPrompt("");
+        setIsSending(true);
 
-        // Simulated AI response
-        setTimeout(() => {
+        try {
+            const res = await axios.post(
+                `${serverUrl}/api/user/ask-astra`,
+                { command: text },
+                { withCredentials: true }
+            );
+
+            const data = res.data;
+            const assistantText = data.response || data.content || "Transmission processed.";
+
             const assistantMsg = {
                 role: "assistant",
-                content: `You noted: "${text}". I have received your transmission and stand ready for our next step.`,
+                content: assistantText,
+                type: data.type,
+                url: data.url,
                 timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             };
+
             setMessages((prev) => [...prev, assistantMsg]);
-        }, 600);
+            speakResponse(assistantText);
+
+            if (data.url) {
+                window.open(data.url, "_blank");
+            }
+        } catch (err) {
+            console.error("Transmission error:", err);
+            const errorMsg = {
+                role: "assistant",
+                content:
+                    err.response?.data?.error ||
+                    "Communication disturbance across the cosmos. Please try again.",
+                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            };
+            setMessages((prev) => [...prev, errorMsg]);
+        } finally {
+            setIsSending(false);
+        }
     };
 
     const handleKeyDown = (e) => {
@@ -236,7 +282,8 @@ function Home() {
                                         <button
                                             key={idx}
                                             onClick={() => handleSendMessage(card.desc)}
-                                            className="group p-3.5 rounded-2xl bg-[#17111F]/70 hover:bg-[#17111F]/95 border border-[#D4AF72]/20 hover:border-[#D4AF72]/60 transition-all flex items-start gap-3 backdrop-blur-md shadow-sm hover:shadow-[0_0_20px_rgba(212,175,114,0.2)] cursor-pointer"
+                                            disabled={isSending}
+                                            className="group p-3.5 rounded-2xl bg-[#17111F]/70 hover:bg-[#17111F]/95 border border-[#D4AF72]/20 hover:border-[#D4AF72]/60 transition-all flex items-start gap-3 backdrop-blur-md shadow-sm hover:shadow-[0_0_20px_rgba(212,175,114,0.2)] cursor-pointer disabled:opacity-50"
                                         >
                                             <div className="p-2 rounded-xl bg-[#D4AF72]/15 text-[#E8C98A] group-hover:bg-[#D4AF72] group-hover:text-black transition-colors flex-shrink-0 mt-0.5">
                                                 <IconComponent size={16} />
@@ -276,6 +323,19 @@ function Home() {
                                 }`}
                             >
                                 <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                                {msg.url && (
+                                    <a
+                                        href={msg.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-lg bg-[#D4AF72]/20 hover:bg-[#D4AF72]/30 border border-[#D4AF72]/40 text-xs font-semibold text-[#E8C98A] transition-colors"
+                                    >
+                                        <span>Open Transmission</span>
+                                        <FiExternalLink size={12} />
+                                    </a>
+                                )}
+
                                 <span
                                     className={`block text-[10px] mt-1.5 text-right font-mono ${
                                         msg.role === "user" ? "text-black/70" : "text-gray-400"
@@ -286,6 +346,20 @@ function Home() {
                             </div>
                         </div>
                     ))}
+
+                    {/* Thinking Indicator */}
+                    {isSending && (
+                        <div className="flex gap-3 justify-start items-center">
+                            <div className="w-9 h-9 rounded-full bg-[#17111F] border border-[#D4AF72]/50 flex-shrink-0 flex items-center justify-center overflow-hidden shadow-[0_0_12px_rgba(212,175,114,0.25)]">
+                                <img src={currentAvatar} alt={currentName} className="w-full h-full object-cover object-top animate-pulse" />
+                            </div>
+                            <div className="px-4 py-3 rounded-2xl bg-[#17111F]/80 border border-[#D4AF72]/30 text-xs text-[#E8C98A] flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-[#D4AF72] animate-ping"></span>
+                                <span>{currentName} is consulting the astral plane...</span>
+                            </div>
+                        </div>
+                    )}
+
                     <div ref={chatEndRef} />
                 </div>
 
@@ -298,14 +372,16 @@ function Home() {
                             onKeyDown={handleKeyDown}
                             rows={1}
                             placeholder={`Transmit query to ${currentName}...`}
-                            className="flex-1 bg-transparent px-3 py-1.5 text-sm text-white placeholder-gray-400 outline-none resize-none max-h-32"
+                            disabled={isSending}
+                            className="flex-1 bg-transparent px-3 py-1.5 text-sm text-white placeholder-gray-400 outline-none resize-none max-h-32 disabled:opacity-50"
                         />
 
                         {/* Speech Input Button */}
                         <button
                             type="button"
                             onClick={toggleSpeechRecognition}
-                            className={`p-2.5 rounded-xl border transition-all cursor-pointer ${
+                            disabled={isSending}
+                            className={`p-2.5 rounded-xl border transition-all cursor-pointer disabled:opacity-40 ${
                                 isListening
                                     ? "bg-red-500/25 border-red-500 text-red-300 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]"
                                     : "bg-white/10 hover:bg-white/15 border-white/20 text-gray-300 hover:text-white"
@@ -319,7 +395,7 @@ function Home() {
                         <button
                             type="button"
                             onClick={() => handleSendMessage()}
-                            disabled={!prompt.trim()}
+                            disabled={!prompt.trim() || isSending}
                             className="p-2.5 rounded-xl bg-gradient-to-r from-[#D4AF72] via-[#E8C98A] to-[#D4AF72] text-black hover:opacity-95 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-[0_0_15px_rgba(212,175,114,0.35)] cursor-pointer font-bold"
                             title="Send Prompt"
                         >

@@ -348,6 +348,16 @@ flowchart TD
      `GEMINI_API_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"`
   2. In `gemini.js`, sanitize the URL with `rawUrl.split("?")[0]` before appending `?key=${apiKey}` to prevent accidental duplicate parameters.
 
+### 10. Natural Language Intent Routing & Temporal Precision (`askAstra` + `moment`)
+- **The Architecture**: Rather than simply echoing text, `askAstra` uses Google Gemini as a semantic classifier that returns structured JSON indicating user intent:
+  - Temporal Queries: `"get_date"`, `"get_time"`, `"get_day"`, `"get_month"`, `"get_year"`
+  - Web & Media Automations: `"google_search"`, `"youtube_search"`, `"youtube_play"`
+  - Application Navigation: `"calculator_open"`, `"instagram_open"`, `"facebook_open"`, `"weather-show"`
+  - Open-ended conversation: `"general"`
+- **Why `moment` is Used**: LLMs do not inherently know real-time wall-clock time without tool use or grounding. When Gemini classifies an intent as `get_time` or `get_date`, the backend intercepts this and uses `moment()` to resolve the exact real-time local date/time (`moment().format("MMM D, YYYY")`, `moment().format("hh:mm A")`).
+- **Resilient JSON Parsing**:
+  LLMs sometimes output conversational text or wrap JSON in Markdown code fences (` ```json ... ``` `). The backend sanitizes the output with `.replace(/```json/gi, "").replace(/```/g, "")` and applies the regex `/\{[\s\S]*\}/` to extract the payload safely. If parsing fails, it gracefully falls back to returning the raw response as a `"general"` reply without throwing a 500 error.
+
 ---
 
 ## 5. API Reference & Contract
@@ -361,6 +371,7 @@ flowchart TD
 | `/api/auth/me` | `GET` | Auth Cookie | None | `200 OK`: `user` object | Validates JWT cookie and returns authenticated session |
 | `/api/user/currentuser` | `GET` | Auth Cookie | None | `200 OK`: `user` object | Retrieves user profile with assistant details |
 | `/api/user/update-assistant` | `POST` | Auth Cookie, Multipart | `FormData: { assistantName, assistantImage }` | `200 OK`: `{ message, user }` | Uploads avatar to Cloudinary & saves custom assistant persona |
+| `/api/user/ask-astra` | `POST` | Auth Cookie | `{ command }` | `200 OK`: `{ success, type, userinput, content, response, url }` | Classifies voice/text intent with Gemini and resolves actions with `moment` |
 
 ---
 
@@ -381,4 +392,5 @@ flowchart TD
 | **2026-11-17** | **Customize & Home UI Redesign** | Transformed Customize Assistant into a spacious 2×2 grid of large (180–220px) rounded-rectangle cards for Astra Nova, Elara, Orion, and Auron with glowing gold borders, fixed names, matching custom upload card, and upgraded the Home dashboard UI. |
 | **2026-11-17** | **Documentation** | Authored full production README.md featuring architecture breakdown, tech badges, directory tree, setup guide, API reference, security patterns, and links to living notes. |
 | **2026-11-17** | **AI Pipeline & Gemini** | Resolved "API key is invalid" error in `gemini.js` caused by duplicated `?key=` query parameters when combining `GEMINI_API_URL` with `GEMINI_API_KEY`. Added URL sanitization and direct dotenv bootstrapping. |
+| **2026-11-18** | **AI Pipeline & Intent Routing** | Verified `moment` package, fixed recursive template variable in `gemini.js`, implemented comprehensive `askAstra` controller with intent routing and real-time temporal formatting, mounted `/api/user/ask-astra` route, and wired speech synthesis in `Home.jsx`. |
 
