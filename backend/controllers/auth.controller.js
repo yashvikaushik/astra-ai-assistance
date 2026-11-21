@@ -63,6 +63,7 @@ export const signup=async (req,res)=>{
 
 export const login=async (req,res)=>{
     try{
+        console.log("in the login controller");
         const{email,password}=req.body;
         const user=await User.findOne({email});
         if(!user){
@@ -121,6 +122,7 @@ export const logout = (req, res) => {
 
 export const getMe = async (req, res) => {
     try {
+        console.log("Inside the getMe controller");
         res.status(200).json(req.user);
     } catch (error) {
         console.log("Error in getMe controller", error.message);
