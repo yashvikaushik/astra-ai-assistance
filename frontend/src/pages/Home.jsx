@@ -17,10 +17,8 @@ import {
     FiPlay,
     FiLogOut,
     FiMic,
-    FiSquare,
     FiVolume2,
     FiVolumeX,
-    FiBell,
     FiSend,
     FiTrash2,
     FiExternalLink,
@@ -326,6 +324,10 @@ function Home() {
     };
 
     const toggleSpeechRecognition = () => {
+        if (isSpeaking) {
+            stopSpeaking();
+        }
+
         if (isListening) {
             if (recognitionRef.current) {
                 try {
@@ -435,6 +437,16 @@ function Home() {
 
                     {/* Navigation Links */}
                     <nav className="mt-5 space-y-1.5">
+                        {/* Start New Conversation Button */}
+                        <button
+                            onClick={startNewChat}
+                            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-[#D4AF72]/15 hover:bg-[#D4AF72]/25 border border-[#D4AF72]/30 hover:border-[#D4AF72]/60 text-[#E8C98A] hover:text-white text-xs font-semibold shadow-sm transition-all cursor-pointer text-left group"
+                            title="Start a new conversation"
+                        >
+                            <FiPlus size={16} className="text-[#D4AF72] group-hover:scale-110 transition-transform" />
+                            <span>New Conversation</span>
+                        </button>
+
                         {/* Home Button (Active Pill) */}
                         <button
                             className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF72]/20 via-[#D4AF72]/10 to-transparent border border-[#D4AF72]/40 text-[#E8C98A] text-xs font-semibold shadow-[0_0_15px_rgba(212,175,114,0.15)] transition-all cursor-pointer text-left"
@@ -464,17 +476,10 @@ function Home() {
 
                     {/* Recent Conversations Section */}
                     <div className="mt-6 flex-1 overflow-hidden flex flex-col min-h-0">
-                        <div className="flex items-center justify-between px-2 mb-2">
+                        <div className="px-2 mb-2">
                             <span className="text-[10px] font-semibold text-gray-400 tracking-wider uppercase">
                                 Recent Conversations
                             </span>
-                            <button
-                                onClick={startNewChat}
-                                className="w-6 h-6 rounded-full bg-[#D4AF72]/15 hover:bg-[#D4AF72]/30 border border-[#D4AF72]/30 flex items-center justify-center text-[#E8C98A] hover:text-white transition-all cursor-pointer"
-                                title="Start New Transmission"
-                            >
-                                <FiPlus size={13} />
-                            </button>
                         </div>
 
                         {/* Sessions List */}
@@ -604,11 +609,21 @@ function Home() {
                     </div>
 
                     {/* Right Controls */}
-                    <div className="flex items-center gap-2.5 sm:gap-3 w-auto lg:w-40 justify-end">
+                    <div className="flex items-center gap-2 sm:gap-3 w-auto justify-end">
+                        {/* Start New Conversation Pill Button */}
+                        <button
+                            onClick={startNewChat}
+                            className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full bg-[#18111e]/85 hover:bg-[#D4AF72]/20 border border-[#D4AF72]/40 text-xs font-semibold text-[#E8C98A] hover:text-white transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] cursor-pointer active:scale-95"
+                            title="Start a new conversation"
+                        >
+                            <FiPlus size={13} className="text-[#D4AF72]" />
+                            <span className="hidden sm:inline">New Conversation</span>
+                        </button>
+
                         {/* Customize Persona Pill Button */}
                         <button
                             onClick={() => navigate("/customize")}
-                            className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#18111e]/85 hover:bg-[#D4AF72]/20 border border-[#D4AF72]/40 text-xs font-semibold text-[#E8C98A] hover:text-white transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] cursor-pointer"
+                            className="hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#18111e]/85 hover:bg-[#D4AF72]/20 border border-[#D4AF72]/40 text-xs font-semibold text-[#E8C98A] hover:text-white transition-all shadow-[0_0_15px_rgba(0,0,0,0.5)] cursor-pointer"
                         >
                             <FiStar size={13} className="text-[#D4AF72]" />
                             <span>Customize Persona</span>
@@ -630,18 +645,6 @@ function Home() {
                             title={isMuted ? "Audio Muted (Click to Unmute)" : "Voice Active (Click to Mute)"}
                         >
                             {isMuted ? <FiVolumeX size={15} /> : <FiVolume2 size={15} />}
-                        </button>
-
-                        {/* Notification / Bell */}
-                        <button
-                            onClick={() => setIsConversationsDrawerOpen(true)}
-                            className="p-2 sm:p-2.5 rounded-full bg-[#18111e]/85 border border-[#D4AF72]/40 text-[#E8C98A] hover:bg-[#D4AF72]/20 transition-all cursor-pointer shadow-md relative"
-                            title="View Archives"
-                        >
-                            <FiBell size={15} />
-                            {sessionsList.length > 0 && (
-                                <span className="w-2 h-2 rounded-full bg-[#D4AF72] absolute top-1 right-1 animate-pulse" />
-                            )}
                         </button>
                     </div>
                 </div>
@@ -874,15 +877,8 @@ function Home() {
                             <FiMic size={28} />
                         </button>
 
-                        {/* 3. Stop / Pause Button */}
-                        <button
-                            type="button"
-                            onClick={stopSpeaking}
-                            className="w-12 h-12 rounded-full bg-[#18111e]/90 hover:bg-red-500/20 border border-[#D4AF72]/40 hover:border-red-500/50 text-[#E8C98A] hover:text-red-300 flex items-center justify-center transition-all shadow-[0_0_20px_rgba(0,0,0,0.6)] cursor-pointer hover:scale-105 active:scale-95"
-                            title="Halt Speech / Stop Action"
-                        >
-                            <FiSquare size={16} />
-                        </button>
+                        {/* Balance spacer so mic remains centered over glowing pedestal */}
+                        <div className="w-12 h-12 pointer-events-none" aria-hidden="true" />
                     </div>
                 </div>
             </main>
