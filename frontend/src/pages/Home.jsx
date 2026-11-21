@@ -2,7 +2,7 @@ import { useState, useContext, useRef, useEffect, useCallback } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { UserDataContext } from "../context/UserContext";
-import background from "../assets/background.png";
+import CelestialBackground from "../components/CelestialBackground";
 import agent2 from "../assets/agent2.png"; // Elara (primary female persona)
 import agent3 from "../assets/agent3.png"; // Orion (male persona)
 import {
@@ -118,9 +118,9 @@ function Home() {
 
     if (authLoading) {
         return (
-            <div
-                className="w-full min-h-screen min-h-dvh bg-cover bg-center flex items-center justify-center"
-                style={{ backgroundImage: `url(${background})` }}
+            <CelestialBackground
+                variant="auth"
+                className="w-full min-h-screen min-h-dvh flex items-center justify-center"
             >
                 <div className="flex flex-col items-center gap-3">
                     <div className="w-10 h-10 border-3 border-[#D4AF72] border-t-transparent rounded-full animate-spin"></div>
@@ -128,7 +128,7 @@ function Home() {
                         Entering Astral Plane...
                     </p>
                 </div>
-            </div>
+            </CelestialBackground>
         );
     }
 
@@ -394,12 +394,11 @@ function Home() {
     const waveformBars = [4, 8, 14, 22, 16, 28, 20, 10, 18, 26, 32, 24, 18, 28, 14, 22, 16, 8, 12, 6];
 
     return (
-        <div
-            className="w-full h-screen h-dvh bg-cover bg-center bg-fixed flex text-white relative overflow-hidden select-none"
-            style={{ backgroundImage: `url(${background})` }}
+        <CelestialBackground
+            variant="dashboard"
+            className="w-full h-screen h-dvh flex text-white relative overflow-hidden select-none"
         >
-            {/* Background Dark Overlay */}
-            <div className="absolute inset-0 bg-black/60 pointer-events-none z-0" />
+            <div className="w-full h-full flex relative z-10 overflow-hidden">
 
             {/* Mobile Header Toggle */}
             <div className="lg:hidden absolute top-4 left-4 z-40">
@@ -1003,7 +1002,8 @@ function Home() {
                     </aside>
                 </>
             )}
-        </div>
+            </div>
+        </CelestialBackground>
     );
 }
 

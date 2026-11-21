@@ -47,6 +47,40 @@
   }
 }
 
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes nebula-pulse {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.06);
+  }
+}
+
+.animate-twinkle-slow {
+  animation: twinkle 5s ease-in-out infinite;
+}
+
+.animate-twinkle-fast {
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+.animate-nebula-pulse {
+  animation: nebula-pulse 10s ease-in-out infinite;
+}
+
 .animate-orbit-slow {
   animation: orbit-slow 24s linear infinite;
 }

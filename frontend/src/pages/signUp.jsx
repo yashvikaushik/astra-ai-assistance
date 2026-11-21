@@ -1,7 +1,7 @@
 import { useState, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FiEye, FiEyeOff } from "react-icons/fi";
-import background from "../assets/background.png";
+import CelestialBackground from "../components/CelestialBackground";
 import { UserDataContext } from "../context/UserContext";
 import axios from "axios";
 
@@ -52,23 +52,25 @@ function SignUp() {
     };
 
     return (
-        <div
-            className="w-full min-h-screen min-h-dvh bg-cover bg-center bg-no-repeat flex items-center justify-center p-4 sm:p-6 md:p-8"
-            style={{ backgroundImage: `url(${background})` }}>
-            <form
-                onSubmit={handleSignUp}
-                className="
-                    w-full
-                    max-w-[440px]
-                    p-6 sm:p-8
-                    bg-[#17111F]/70
-                    backdrop-blur-xl
-                    rounded-2xl
-                    border border-[#D4AF72]/30
-                    shadow-[0_8px_40px_rgba(0,0,0,0.45)]
-                    transition-all
-                "
-            >
+        <CelestialBackground
+            variant="auth"
+            className="min-h-screen min-h-dvh flex items-center justify-center p-4 sm:p-6 md:p-8"
+        >
+            <div className="w-full flex items-center justify-center">
+                <form
+                    onSubmit={handleSignUp}
+                    className="
+                        w-full
+                        max-w-[440px]
+                        p-6 sm:p-8
+                        bg-[#17111F]/80
+                        backdrop-blur-2xl
+                        rounded-2xl
+                        border border-[#D4AF72]/35
+                        shadow-[0_8px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(212,175,114,0.12)]
+                        transition-all
+                    "
+                >
                 <h1 className="text-2xl sm:text-3xl text-center text-[#E8C98A] font-semibold tracking-widest mb-1.5">
                     ASTRA
                 </h1>
@@ -165,7 +167,8 @@ function SignUp() {
                     </Link>
                 </p>
             </form>
-        </div>
+            </div>
+        </CelestialBackground>
     );
 }
 

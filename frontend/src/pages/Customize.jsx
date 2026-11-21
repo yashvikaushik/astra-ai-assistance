@@ -1,7 +1,7 @@
 import { useState, useContext, useEffect } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { UserDataContext } from "../context/UserContext";
-import background from "../assets/background.png";
+import CelestialBackground from "../components/CelestialBackground";
 import agent2 from "../assets/agent2.png";
 import agent3 from "../assets/agent3.png";
 import axios from "axios";
@@ -97,15 +97,15 @@ function Customize() {
 
     if (authLoading) {
         return (
-            <div
-                className="w-full min-h-screen min-h-dvh bg-cover bg-center flex items-center justify-center"
-                style={{ backgroundImage: `url(${background})` }}
+            <CelestialBackground
+                variant="auth"
+                className="w-full min-h-screen min-h-dvh flex items-center justify-center"
             >
                 <div className="flex flex-col items-center gap-3">
                     <div className="w-10 h-10 border-3 border-[#D4AF72] border-t-transparent rounded-full animate-spin"></div>
                     <p className="text-sm text-[#E8C98A] tracking-wider font-medium">Loading Celestial Hall...</p>
                 </div>
-            </div>
+            </CelestialBackground>
         );
     }
 
@@ -202,9 +202,9 @@ function Customize() {
     };
 
     return (
-        <div
-            className="w-full min-h-screen min-h-dvh bg-cover bg-center bg-fixed flex flex-col justify-between p-4 sm:p-6 lg:p-10 text-white"
-            style={{ backgroundImage: `url(${background})` }}
+        <CelestialBackground
+            variant="customize"
+            className="w-full min-h-screen min-h-dvh flex flex-col justify-between p-4 sm:p-6 lg:p-10 text-white"
         >
             <div className="w-full max-w-5xl mx-auto space-y-8">
                 {/* Header */}
@@ -560,7 +560,7 @@ function Customize() {
                     </button>
                 </div>
             </div>
-        </div>
+        </CelestialBackground>
     );
 }
 
