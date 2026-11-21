@@ -358,9 +358,261 @@ flowchart TD
 - **Resilient JSON Parsing**:
   LLMs sometimes output conversational text or wrap JSON in Markdown code fences (` ```json ... ``` `). The backend sanitizes the output with `.replace(/```json/gi, "").replace(/```/g, "")` and applies the regex `/\{[\s\S]*\}/` to extract the payload safely. If parsing fails, it gracefully falls back to returning the raw response as a `"general"` reply without throwing a 500 error.
 
+### 11. Single Default Export Rule in JavaScript ES Modules
+- **The Issue**: In JavaScript (ES6+ Modules), each module/file is allowed to have at most **one** `export default`.
+- **The Pitfall**: In `frontend/src/context/UserContext.jsx`, the file defined:
+  ```javascript
+  export default function UserContextProvider({ children }) { ... }
+  ```
+  and then at the bottom of the file added:
+  ```javascript
+  export default geminiResponse;
+  ```
+- **The Error**: JavaScript compilers (Vite, Rollup, Babel, TypeScript) throw `SyntaxError: A module cannot have multiple default exports`.
+- **The Secondary Scope Bug**: `serverUrl` had been defined locally inside `UserContextProvider`, so a helper function placed outside the component could not access `serverUrl` (causing `ReferenceError: serverUrl is not defined`).
+- **The Fix**:
+  1. Kept `UserContextProvider` as the single default export so `main.jsx` can wrap the app tree without breakage.
+  2. Promoted `serverUrl` to module scope so all functions in the file can access it.
+  3. Exported `geminiResponse` as a named export (`export const geminiResponse = ...`) and also injected it into the `UserDataContext` provider `value` object.
+
+### 12. Compound Intent Deconstruction & Web Speech API Troubleshooting
+- **Multi-Action Pipeline Architecture**:
+  To support compound voice statements (such as *"open Instagram and tell me the time"*), `backend/gemini.js` instructs Gemini to return a structured `actions: [...]` array. `askAstra` in `backend/controllers/user.controller.js` iterates through each action sequentially:
+  - Resolving temporal actions (`get_time`, `get_date`) via `moment`.
+  - Compiling browser redirect targets (`urls: [...]`) for web actions (`instagram_open`, `youtube_play`, `google_search`).
+  - Merging action voice fragments into a unified natural spoken sentence.
+  - Supporting backward compatibility by accepting both array `actions: [...]` and legacy single-intent `type` objects.
+- **Web Speech API `network` Error**:
+  - In Chromium browsers, `webkitSpeechRecognition` streams raw audio frames to Google's cloud speech recognition endpoints.
+  - When Chrome returns `event.error = 'network'`, it indicates that the cloud speech WebSocket was refused or blocked.
+  - Primary causes:
+    1. **Brave Browser Privacy Shields**: Brave blocks Google speech telemetry by default. (Fix: turn shields off for `localhost` and enable Google services in `brave://settings/extensions`).
+    2. **VPN / Proxy / Ad-Blockers**: Network filters intercept or sever Google's streaming audio sockets.
+    3. **DNS / Host Resolution**: Sometimes `127.0.0.1:5173` routes more reliably than `localhost:5173` on macOS.
+  - Added an in-app dismissible banner in `frontend/src/pages/Home.jsx` to inform users of network/permission status without requiring DevTools.
+
+### 13. Session-Based Conversation History Architecture (`User.history[sessionSchema]`)
+- **The Design**: Rather than storing raw strings in `history: [String]`, the User model uses nested Mongoose subdocuments:
+  ```javascript
+  messageSchema: { role, content, type, urls, timestamp }
+  sessionSchema: { sessionId, title, startedAt, messages: [messageSchema] }
+  userSchema.history: [sessionSchema]
+  ```
+- **Active Session Tracking**:
+  - `askAstra` accepts `{ command, sessionId }`.
+  - If `sessionId` is passed and found, messages are appended to that session.
+  - If `sessionId` is omitted or new, a session is automatically initialized with an auto-truncated title (e.g., `command.slice(0, 32)`).
+  - Both the user prompt turn and the assistant response turn are recorded synchronously into `session.messages`.
+- **Transmission Archives UI**:
+  - `GET /api/user/history` returns lightweight session summaries (`messageCount`, `lastMessage`, `startedAt`) without bloated message bodies.
+  - `GET /api/user/history/:sessionId` returns full message arrays when opening an archived conversation.
+  - A slide-over celestial drawer in `frontend/src/pages/Home.jsx` provides one-click switching between historical sessions, creating new transmissions, or deleting specific archives.
+
+### 14. Mongoose Schema Migration Pitfall (`Tried to set nested object field 'history' to primitive value`)
+- **The Symptom**: When sending a message or querying user data, Mongoose throws:
+  `ValidatorError: Tried to set nested object field 'history' to primitive value 'hello'`.
+- **The Root Cause**:
+  Under the earlier schema, `userSchema.history` was defined as `[{ type: String }]` (or `[String]`). When commands like `"hello"` were sent previously, MongoDB Atlas stored primitive strings in the user document: `history: ["hello", ...]`.
+  When the schema was upgraded to `history: [sessionSchema]`, Mongoose attempted to cast existing strings in the database into embedded subdocuments (`{ sessionId, title, startedAt, messages }`).
+  Because `"hello"` is a primitive string and not an object, Mongoose's Document caster triggers an `ObjectExpectedError` during `doc.init()` when reading from MongoDB, and `user.save()` fails validation with `ValidatorError: Tried to set nested object field 'history' to primitive value 'hello'`.
+- **The Resolution**:
+  1. **Mongoose `pre('init')` Hook**:
+     Added a pre-init hook on `userSchema` in `backend/models/user.model.js`. This intercepts the raw document directly from MongoDB before Mongoose casts it into a model. Any legacy strings are automatically converted on-the-fly into valid `sessionSchema` objects (e.g. `{ sessionId: ..., title: "hello", messages: [{ role: "user", content: "hello" }] }`), eliminating casting errors during document hydration.
+  2. **Defensive Filtering in Controllers**:
+     In `backend/controllers/user.controller.js` (`askAstra`, `getChatHistory`, `getSessionMessages`, `deleteSession`), added defensive checks ensuring `user.history` is an array and filtering out any non-object items before operating on or saving the document.
+  3. **Standalone Migration Script (`backend/migrate-history.js`)**:
+     Created a native MongoDB migration script accessible via `npm run migrate:history` that scans the `users` collection and updates legacy documents directly in MongoDB Atlas.
+
+### 15. Cinematic 2-Column Dashboard Redesign (`Home.jsx`)
+- **Architecture**: Refactored the assistant dashboard from a traditional vertical chat screen into a majestic 2-column cosmic command center inspired by visual mockups:
+  - **Left Sidebar Dock**:
+    - Branded with `ASTRA AI Companion` and 4-point golden star emblem.
+    - Navigation: `Home` (active pill), `Conversations` (archives drawer toggle), `Persona` (`/customize` link).
+    - Excluded non-essential items (`Tools` and `Settings`).
+    - Dynamic `Recent Conversations` list connected to `GET /api/user/history` with session titles, relative timestamps, and one-click session loading.
+    - Clean user profile footer with avatar, name, and logout (no Pro Member badge).
+  - **Central Celestial Stage**:
+    - Persona Selection: Automatically defaults to **Elara** (`agent2.png`) as the primary female persona and **Orion** (`agent3.png`) as the male persona (or custom user-uploaded avatar), with dynamic tracking typography (`ELARA` / `ORION`).
+    - Rotating concentric orbital rings with planetary beads and pulsing starlight glow.
+    - 20-bar animated golden equalizer waveform and real-time status indicator (`Speaking...`, `Listening...`, `Synthesizing...`, `Standing by...`).
+    - Dynamic response / subtitle capsule with external action links.
+    - Tri-button control pedestal:
+      1. Keyboard toggle button (reveals floating text prompt bar with suggestion chips).
+      2. Large glowing golden microphone button (`toggleSpeechRecognition`).
+      3. Stop / cancel button (halts speech synthesis and speech recognition).
+    - Slide-over Conversations Archive Drawer for full transcript inspection and session management.
+
+### 16. Strict Vocal Gender Association Engine & Custom Persona Voice Selector
+- **The Requirement**: Female voices must strictly accompany **Elara** (with a sweet, crisp, clear vocal quality) and male voices must accompany **Orion**. For custom user personas, an interactive voice profile selector (Male vs. Female) must dictate vocal synthesis.
+- **The "Albert" Fallback Bug on macOS**:
+  - In macOS SpeechSynthesis, system voices are listed alphabetically: `Albert`, `Alice`, `Alva`, `Amélie`...
+  - `Albert` is a male robotic novelty voice that lacks the string `"male"` or `"alex"`.
+  - When a generic negative fallback (`!maleRegex.test(v.name)`) ran, `Albert` was erroneously matched as the first voice for female personas, producing a male robotic voice.
+- **The Sweet, Crisp Voice Hierarchy for Elara**:
+  - Replaced negative heuristics with a curated priority array:
+    1. **`Samantha`**: macOS flagship sweet, crisp, crystal-clear natural female voice (Siri timbre).
+    2. **`Google UK English Female`** & **`Victoria`**: Sweet, refined British female voices.
+    3. **`Google US English`** & **`Karen`**: Natural conversational clear female voices.
+  - Added `MALE_NOVELTY_BLACKLIST` explicitly banning `albert`, `alex`, `fred`, `daniel`, `david`, `ralph`, `bad news`, `zarvox`, etc. from ever being assigned to female personas.
+  - Sweet voice pitch calibration: `utterance.pitch = 1.05`, `utterance.rate = 1.0`.
+- **The Standard Voice Hierarchy for Orion**:
+  - Standard browser male voice priority: `Daniel`, `Alex`, `Google UK English Male`, `David`.
+  - Grounded pitch calibration: `utterance.pitch = 0.92`, `utterance.rate = 1.0`.
+- **Custom Persona UI (`Customize.jsx`) & Backend Persistence**:
+  - Added interactive `Voice Profile` toggle buttons (`♀ Female Voice` / `♂ Male Voice`) in the custom persona form.
+  - Persisted `assistantGender: { type: String, enum: ["female", "male"], default: "female" }` in `userSchema` and `updateAssistant` controller.
+
 ---
 
-## 5. API Reference & Contract
+## 5. Google Gemini AI Engineering Masterclass & Deep Dive
+
+> **Essential Learning for Software Engineers & Students**: This section breaks down the foundational patterns, architectural mechanics, and common traps when integrating Google Gemini (and Large Language Models in general) into a production full-stack application.
+
+```
++-----------------------------------------------------------------------------------------------------+
+|                                FULL-STACK AI ORCHESTRATION PIPELINE                                 |
++-----------------------------------------------------------------------------------------------------+
+|                                                                                                     |
+|  [ FRONTEND ]                                                                                       |
+|   User Voice / Text Query: "Who was the president before him and open Instagram"                   |
+|         │                                                                                           |
+|         ▼ (HTTP POST /api/user/ask-astra { command, sessionId })                                    |
+|                                                                                                     |
+|  [ BACKEND: user.controller.js ]                                                                    |
+|   1. Query MongoDB for active Session: session.messages                                             |
+|   2. Extract Sliding Memory Window: (session.messages).slice(-8)                                    |
+|   3. Construct Augmented Context: User Identity + Assistant Persona + Prior Turns                  |
+|         │                                                                                           |
+|         ▼ (Direct HTTPS POST to Gemini API :generateContent)                                        |
+|                                                                                                     |
+|  [ GOOGLE GEMINI LLM: gemini-2.5-flash ]                                                            |
+|   1. Resolves Anaphora ("him" -> references prior turn context)                                     |
+|   2. Deconstructs Compound Intents -> Actions Array                                                 |
+|   3. Returns Strict JSON Contract: { actions: [...], response: "..." }                              |
+|         │                                                                                           |
+|         ▼                                                                                           |
+|                                                                                                     |
+|  [ BACKEND: Intent Execution Engine ]                                                               |
+|   1. Action 1: "general" -> Keep factual answer ("Barack Obama served prior to...")                 |
+|   2. Action 2: "instagram_open" -> Generate URL ("https://instagram.com")                          |
+|   3. Synthesis: Merge spoken responses & persist turns to MongoDB Atlas                             |
+|         │                                                                                           |
+|         ▼ (HTTP 200 { response, urls, actions, sessionId })                                         |
+|                                                                                                     |
+|  [ FRONTEND ]                                                                                       |
+|   1. Text-to-Speech: Synthesize voice response in browser via Web Speech API                        |
+|   2. Action Trigger: Open URL in new window/tab                                                     |
+|   3. UI Updates: Display subtitle pill & waveform animation                                         |
++-----------------------------------------------------------------------------------------------------+
+```
+
+### 1. The Core Paradigm: Probabilistic Models vs. Deterministic Backends
+- **What an LLM Actually Is**: An LLM is not a database, an operating system, or a deterministic state machine. It is a probabilistic text predictor trained to generate the most statistically probable next tokens given an input context window.
+- **The Orchestrator's Job**: A production web backend (Node.js/Express) serves as the **deterministic orchestrator**. The backend's responsibility is to:
+  1. Constrain the LLM's output format into structured, parseable data (JSON).
+  2. Intercept tasks the LLM cannot do accurately (e.g. real-time wall clock time, database updates, browser navigation).
+  3. Execute deterministic side-effects (opening URLs, calculating timestamps, persisting database records).
+
+---
+
+### 2. The Stateless Fallacy & The Architecture of Conversational Memory
+- **The Rule**: LLMs are **100% stateless**. HTTP requests to `v1beta/models/...:generateContent` are completely independent. The Gemini API does not "remember" who you are or what you asked two seconds ago.
+- **The "Illusion of Continuous Memory"**: To make an AI feel like a personal companion that remembers context, the orchestrator must maintain state in a database (MongoDB Atlas) and feed previous conversation turns back into the prompt on every request.
+- **The Sliding Window Pattern**:
+  - *Anti-Pattern*: Sending the user's entire lifetime history (e.g. 500 messages). This causes context window overflow, explosive token billing costs, and high latency (Time To First Token - TTFT).
+  - *Best Practice*: Slicing the most recent turns (`(session.messages || []).slice(-8)`). This provides immediate conversational continuity (resolving pronouns like *"who was before him?"* or *"what did I ask earlier?"*) while keeping token payloads compact.
+
+```javascript
+// backend/controllers/user.controller.js
+// Extract the last 8 messages for contextual recall
+const recentHistory = (session.messages || []).slice(-8);
+
+// Pass history into the LLM prompt generator
+const result = await geminiResponse(command, assistantName, userName, recentHistory);
+```
+
+---
+
+### 3. Structured Output Contracts & The Deterministic Parsing Pipeline
+- **The Challenge**: If you prompt an LLM naturally, it will reply with conversational pleasantries, markdown bolding (`**`), bullet points, and code fences (` ```json `). A backend cannot reliably pass raw conversational prose into an automated system.
+- **The Solution: Strict JSON Contracts**:
+  We enforce a strict JSON output schema in the system prompt:
+  ```json
+  {
+      "actions": [
+          {
+              "type": "general" | "google_search" | "youtube_search" | "get_time" | "instagram_open",
+              "userinput": "<clean argument>"
+          }
+      ],
+      "response": "<spoken voice reply>"
+  }
+  ```
+- **Defensive Production Parsing**:
+  Never assume the model's output will pass `JSON.parse()` cleanly. In production:
+  1. Strip Markdown fences: `.replace(/```json/gi, "").replace(/```/g, "").trim()`.
+  2. Extract JSON with regex: `.match(/\{[\s\S]*\}/)` to isolate the object even if the model outputs trailing or leading chatter.
+  3. Try/Catch Fallback: If `JSON.parse` fails, fall back to treating the text as a `"general"` reply rather than throwing an unhandled 500 error to the client.
+
+---
+
+### 4. The "Placeholder Stalling" Anti-Pattern & Prompt Engineering
+- **The Bug**: When asked *"Who is the President of the United States?"*, the assistant previously replied: *"I can help with that, let me look into it"* and then went silent.
+- **Why This Happened**:
+  Because the prompt included tools like `"google_search"`, and the instruction for `"response"` said:
+  *`"A conversational spoken reply that confirms all requested actions (e.g. 'Opening Instagram now, and checking the current time.')"`*
+  The model classified the query as something that required searching, generated a placeholder acknowledgment, and expected an external system to perform the search.
+- **The Engineering Rule**:
+  You must clearly decouple **Direct Knowledge Questions** from **External Tool Actions**:
+  - **Direct Knowledge (`type: "general"`)**: Instruct the model that for all questions seeking facts, explanations, or concepts, it **must provide the direct, complete answer immediately** in `response`.
+  - **Tool Actions (`type: "google_search"`, etc.)**: Only trigger search actions when the user explicitly uses keywords like *"search Google for"* or *"google"*.
+
+---
+
+### 5. Grounding Real-Time Temporal Queries (LLM Hallucinations vs. System Clock)
+- **Why LLMs Cannot Tell Time**:
+  LLMs do not have an internal clock or access to the host operating system. If you ask Gemini *"What time is it?"* without grounding, it will either hallucinate a random time, use its training cutoff timestamp, or state that it cannot tell time.
+- **The Hybrid Grounding Pattern**:
+  1. Let Gemini act as a **semantic router**: It classifies *"what time is it"* as `type: "get_time"`.
+  2. The Node.js backend intercepts `get_time`:
+     ```javascript
+     case "get_time": {
+         const timeStr = moment().format("hh:mm A");
+         voiceFragments.push(`The time is ${timeStr}.`);
+         break;
+     }
+     ```
+  3. The system returns the exact, real-time local wall-clock time with zero hallucination.
+
+---
+
+### 6. Compound Intent Deconstruction (Multi-Action Pipeline)
+- **Single vs. Compound Prompts**:
+  Real users speak in compound sentences: *"Astra, open Instagram and tell me what day it is."*
+- **Deconstruction Pattern**:
+  Instead of forcing the LLM to choose one single `type`, we instruct Gemini to return an `actions: [...]` array:
+  ```json
+  {
+      "actions": [
+          { "type": "instagram_open", "userinput": "instagram" },
+          { "type": "get_day", "userinput": "day" }
+      ],
+      "response": "Opening Instagram now, and today is Saturday."
+  }
+  ```
+- The backend iterates through the array, opens `https://instagram.com`, resolves the current day via `moment().format("dddd")`, and joins the spoken fragments into a cohesive spoken experience.
+
+---
+
+### 7. Security, Environment Hygiene & API Key Sanitization
+- **Client-Side vs. Server-Side Keys**: Never expose `GEMINI_API_KEY` on the frontend (Vite/React). All Gemini calls must originate from your authenticated Node.js backend to prevent key theft, quota exhaustion, and billing abuse.
+- **URL Parameter Trap**:
+  In `.env` configurations, some developers paste the full URL including `?key=...`. If the backend interpolates `${process.env.GEMINI_API_URL}?key=${process.env.GEMINI_API_KEY}`, you end up with:
+  `.../generateContent?key=...&key=...` which Google rejects as an invalid API key. Always sanitize endpoints with `rawUrl.split("?")[0]`.
+
+---
+
+## 6. API Reference & Contract
 
 | Endpoint | Method | Headers / Auth | Request Body | Response (Success) | Description |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -371,11 +623,15 @@ flowchart TD
 | `/api/auth/me` | `GET` | Auth Cookie | None | `200 OK`: `user` object | Validates JWT cookie and returns authenticated session |
 | `/api/user/currentuser` | `GET` | Auth Cookie | None | `200 OK`: `user` object | Retrieves user profile with assistant details |
 | `/api/user/update-assistant` | `POST` | Auth Cookie, Multipart | `FormData: { assistantName, assistantImage }` | `200 OK`: `{ message, user }` | Uploads avatar to Cloudinary & saves custom assistant persona |
-| `/api/user/ask-astra` | `POST` | Auth Cookie | `{ command }` | `200 OK`: `{ success, type, userinput, content, response, url }` | Classifies voice/text intent with Gemini and resolves actions with `moment` |
+| `/api/user/ask-astra` | `POST` | Auth Cookie | `{ command, sessionId }` | `200 OK`: `{ success, sessionId, type, content, response, actions, urls }` | Multi-action intent processing & session turn persistence |
+| `/api/user/history` | `GET` | Auth Cookie | None | `200 OK`: `{ success, sessions: [...] }` | Summarized list of archived sessions |
+| `/api/user/history/:sessionId` | `GET` | Auth Cookie | None | `200 OK`: `{ success, session: { messages: [...] } }` | Full transcript of a single session |
+| `/api/user/history/:sessionId` | `DELETE` | Auth Cookie | None | `200 OK`: `{ success, message }` | Deletes a single archived session |
+| `/api/user/history` | `DELETE` | Auth Cookie | None | `200 OK`: `{ success, message }` | Clears all archived sessions |
 
 ---
 
-## 6. Maintenance & Engineering Changelog
+## 7. Maintenance & Engineering Changelog
 
 | Date | Category | Summary of Changes |
 | :--- | :--- | :--- |
@@ -393,4 +649,71 @@ flowchart TD
 | **2026-11-17** | **Documentation** | Authored full production README.md featuring architecture breakdown, tech badges, directory tree, setup guide, API reference, security patterns, and links to living notes. |
 | **2026-11-17** | **AI Pipeline & Gemini** | Resolved "API key is invalid" error in `gemini.js` caused by duplicated `?key=` query parameters when combining `GEMINI_API_URL` with `GEMINI_API_KEY`. Added URL sanitization and direct dotenv bootstrapping. |
 | **2026-11-18** | **AI Pipeline & Intent Routing** | Verified `moment` package, fixed recursive template variable in `gemini.js`, implemented comprehensive `askAstra` controller with intent routing and real-time temporal formatting, mounted `/api/user/ask-astra` route, and wired speech synthesis in `Home.jsx`. |
+| **2026-11-19** | **Frontend Module Fix** | Resolved "A module cannot have multiple default exports" in `UserContext.jsx` by retaining `UserContextProvider` as default export, hoisting `serverUrl` to module scope, and providing `geminiResponse` as both a named export and context value. |
+| **2026-11-20** | **Compound Actions & Speech Robustness** | Upgraded Gemini prompt and `askAstra` controller to support compound multi-action statements (`actions` array), unified spoken replies, and added in-app speech error diagnostics in `Home.jsx`. |
+| **2026-11-20** | **Session History & Archives** | Redesigned `User.history` into nested `sessionSchema` subdocuments recording full user & assistant conversation turns. Built session CRUD endpoints and added a slide-over Transmission Archives drawer with session loading, switching, and purging. |
+| **2026-11-20** | **Schema Migration & Self-Healing** | Fixed `ValidatorError: Tried to set nested object field 'history' to primitive value` by adding Mongoose `pre('init')` and `pre('validate')` hooks to seamlessly convert legacy primitive strings (`["hello"]`) in MongoDB into structured session subdocuments, adding defensive controller filtering, and providing `migrate-history.js`. |
+| **2026-11-21** | **Cinematic Home Dashboard** | Transformed `Home.jsx` into a 2-column cosmic dashboard: left sidebar dock (Home, Conversations, Persona, Recent Transmissions, user profile without Pro badge), hero stage with rotating orbital rings, Elara/Orion persona switching, dynamic audio waveform, response capsule, and tri-button control pedestal (Keyboard, Mic, Stop). |
+| **2026-11-21** | **Gemini Knowledge & Multi-Turn Memory** | Resolved placeholder stalling bug by strictly enforcing direct factual answers in `response` for `general` queries; enabled multi-turn session memory by passing sliding history window (`(session.messages).slice(-8)`) from `askAstra` to `geminiResponse`; added comprehensive Gemini AI Engineering Masterclass section to `NOTES.md`. |
+| **2026-11-21** | **Strict Vocal Gender & Custom Persona Voice** | Implemented strict voice association: female voice for Elara and male voice for Orion; added Male/Female voice selector in `Customize.jsx` for custom personas; updated `User.assistantGender` in backend; added voice caching and calibrated pitch tuning (`0.88` male, `1.08` female). |
+| **2026-11-21** | **Web Speech API Root Cause & Bulletproof Engine** | Diagnosed and permanently fixed the male voice bug for Elara: removed misclassified `Google US English` from female whitelist, enforced strict male blacklisting, solved the Chromium async `getVoices()` race condition with auto-retry, added interactive voice preview in `Customize.jsx`, and migrated legacy database records. |
+
+---
+
+## 8. Web Speech API Deep Dive: Female Voice Selection Architecture & Root Cause Analysis
+
+> **Critical Frontend & Browser Audio Engineering Guide**: This section documents the exact technical mechanics behind browser speech synthesis (`window.speechSynthesis`), why browsers (especially Google Chrome on macOS) default to male voices, and how to construct a bulletproof voice engine.
+
+### 8.1 The Root Cause Diagnosis: Why Elara Spoke with a Male Voice
+
+When investigating why Elara (and female personas) continued speaking in a male voice despite prior pitch adjustments, four distinct browser and code-level factors were uncovered:
+
+```
++----------------------------------------------------------------------------------------------------+
+|                           THE SPEECH SYNTHESIS GENDER FAILURE CHAIN                                |
++----------------------------------------------------------------------------------------------------+
+|                                                                                                    |
+|  1. CHROME VOICE MISCLASSIFICATION TRAP                                                            |
+|     * In Google Chrome, "Google US English" is a MALE synthesizer voice.                           |
+|     * The whitelist had placed "Google US English" under PREFERRED_FEMALE_VOICES.                  |
+|     * Chrome matched this entry immediately and forced Elara to speak with a male voice!           |
+|                                                                                                    |
+|  2. MALE BLACKLIST OMISSION                                                                        |
+|     * While Alex, Daniel, and Fred were blacklisted, "Google US English" was omitted.              |
+|     * In any fallback search, Chrome naturally returned "Google US English" as its first English   |
+|       voice, guaranteeing a male voice every time.                                                 |
+|                                                                                                    |
+|  3. CHROMIUM ASYNCHRONOUS GETVOICES() RACE CONDITION                                               |
+|     * window.speechSynthesis.getVoices() returns an empty array [] on initial page mount.          |
+|     * If speech synthesis executes before onvoiceschanged populates, utterance.voice is null.      |
+|     * When utterance.voice is null, the OS plays its default voice (Alex on macOS, which is male). |
+|                                                                                                    |
+|  4. PITCH TUNING LIMITATIONS                                                                       |
+|     * Setting utterance.pitch = 1.05 does NOT alter vocal tract formants or timbre.                |
+|     * It simply pitches up the male vocal model, sounding like an unnatural high-frequency male.   |
+|                                                                                                    |
++----------------------------------------------------------------------------------------------------+
+```
+
+### 8.2 The Resilient Multi-Tier Vocal Engine (`speechVoice.js`)
+
+To permanently eliminate this issue across all operating systems (macOS, Windows, Linux, iOS, Android) and browsers (Chrome, Safari, Edge, Firefox), we engineered a dedicated vocal pipeline with the following principles:
+
+1. **Strictly Verified Female Voice Priority**:
+   - `Google UK English Female` (Google Chrome's crisp British female voice)
+   - `Samantha` (macOS flagship sweet, clear, friendly American female voice)
+   - `Victoria`, `Karen`, `Moira`, `Tessa`, `Kathy`, `Serena`, `Ava`, `Allison`, `Susan`, `Veena`
+   - `Microsoft Jenny (Natural)`, `Microsoft Aria (Natural)`, `Microsoft Zira`
+2. **Exhaustive Male & Novelty Voice Blacklist for Female Personas**:
+   - Strictly blocks: `google us english`, `alex`, `daniel`, `david`, `fred`, `albert`, `george`, `oliver`, `ralph`, `rishi`, `thomas`, `tom`, `mark`, `guy`, `richard`, `james`, `male`, `man\b`, `boy`, and all macOS novelty voices (`bad news`, `bahh`, `bells`, `boing`, `bubbles`, `cellos`, `good news`, `jester`, `junior`, `organ`, `superstar`, `trinoids`, `whisper`, `wobble`, `zarvox`).
+3. **Chromium Async Voice Loading Retry Mechanism**:
+   - If `getVoices()` returns `[]`, the engine automatically retries up to 3 times (150ms apart) until voices are hydrated, ensuring `utterance.voice` is never `undefined`.
+4. **Explicit Locale Binding**:
+   - Sets `utterance.lang = selectedVoice.lang || "en-US"`, preventing the browser from defaulting to unexpected OS locale voices.
+5. **Calibrated Vocal Acoustics**:
+   - **Elara / Female**: `pitch: 1.15`, `rate: 1.0` (crisp, sweet, melodic, articulate).
+   - **Orion / Male**: `pitch: 0.92`, `rate: 1.0` (grounded, steady, analytical).
+6. **Live Interactive Voice Preview in UI**:
+   - Added a "Hear Voice 🔊" button directly on both the Preset cards (Elara / Orion) and Custom Persona form in `/customize` so users can instantly audit and verify the synthesized voice with zero guesswork.
+
 

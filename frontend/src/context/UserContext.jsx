@@ -4,10 +4,35 @@ import axios from "axios";
 
 export const UserDataContext = createContext(null);
 
+const serverUrl = "http://localhost:5002";
+
+// Exported as a named export for standalone usage
+export const geminiResponse = async (command, sessionId = null) => {
+    try {
+        const result = await axios.post(
+            `${serverUrl}/api/user/ask-astra`,
+            { command, sessionId },
+            {
+                withCredentials: true,
+            }
+        );
+
+        return result.data;
+    } catch (error) {
+        console.error("Error getting Gemini response:", error.message);
+
+        return {
+            success: false,
+            message: "Failed to get response from Gemini.",
+        };
+    }
+};
+
+// Exported as the single DEFAULT export so main.jsx can wrap the app
 export default function UserContextProvider({ children }) {
     const [userData, setUserData] = useState(null);
     const [authLoading, setAuthLoading] = useState(true);
-    const serverUrl = "http://localhost:5002";
+    const [currentSessionId, setCurrentSessionId] = useState(null);
 
     useEffect(() => {
         const checkAuth = async () => {
@@ -17,7 +42,7 @@ export default function UserContextProvider({ children }) {
                 });
                 setUserData(res.data);
                 console.log(res.data);
-            } catch(error) {
+            } catch (error) {
                 setUserData(null);
                 console.log(error);
             } finally {
@@ -26,7 +51,7 @@ export default function UserContextProvider({ children }) {
         };
 
         checkAuth();
-    }, [serverUrl]);
+    }, []);
 
     const logout = async () => {
         try {
@@ -34,6 +59,7 @@ export default function UserContextProvider({ children }) {
                 withCredentials: true,
             });
             setUserData(null);
+            setCurrentSessionId(null);
         } catch (err) {
             console.error("Logout failed:", err);
         }
@@ -45,6 +71,9 @@ export default function UserContextProvider({ children }) {
         setUserData,
         authLoading,
         logout,
+        currentSessionId,
+        setCurrentSessionId,
+        geminiResponse,
     };
 
     return (

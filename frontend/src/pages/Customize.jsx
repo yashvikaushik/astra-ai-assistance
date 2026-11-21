@@ -1,38 +1,37 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { UserDataContext } from "../context/UserContext";
 import background from "../assets/background.png";
-import agent1 from "../assets/agent1.png";
 import agent2 from "../assets/agent2.png";
 import agent3 from "../assets/agent3.png";
-import agent4 from "../assets/agent4.png";
 import axios from "axios";
-import { FiUploadCloud, FiStar, FiCheck, FiArrowRight } from "react-icons/fi";
+import {
+    FiUploadCloud,
+    FiStar,
+    FiCheck,
+    FiArrowRight,
+    FiVolume2,
+    FiVolumeX,
+} from "react-icons/fi";
+import {
+    speakCelestialResponse,
+    stopCelestialSpeech,
+} from "../utils/speechVoice";
 
 const PRESET_AVATARS = [
     {
-        id: "astra-nova",
-        name: "Astra Nova",
-        tagline: "Celestial Intelligence & Visionary Guidance",
-        image: agent1,
-    },
-    {
         id: "elara",
         name: "Elara",
+        gender: "female",
         tagline: "Creative Synthesis & Intuitive Strategy",
         image: agent2,
     },
     {
         id: "orion",
         name: "Orion",
+        gender: "male",
         tagline: "Tactical Navigator & Deep Analytical Power",
         image: agent3,
-    },
-    {
-        id: "auron",
-        name: "Auron",
-        tagline: "Radiant Sentinel & High-Speed Execution",
-        image: agent4,
     },
 ];
 
@@ -54,6 +53,9 @@ function Customize() {
     const [customName, setCustomName] = useState(
         selectedMode === "custom" ? (userData?.assistantName || "") : ""
     );
+    const [customGender, setCustomGender] = useState(
+        userData?.assistantGender || "female"
+    );
     const [customImageFile, setCustomImageFile] = useState(null);
     const [customImagePreview, setCustomImagePreview] = useState(
         selectedMode === "custom" ? (userData?.assistantImage || "") : ""
@@ -61,7 +63,37 @@ function Customize() {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [previewPlayingId, setPreviewPlayingId] = useState(null);
     const navigate = useNavigate();
+
+    // Clean up any ongoing preview speech when leaving the page
+    useEffect(() => {
+        return () => {
+            stopCelestialSpeech();
+        };
+    }, []);
+
+    const handlePreviewVoice = (gender, personaName) => {
+        if (previewPlayingId === personaName) {
+            stopCelestialSpeech();
+            setPreviewPlayingId(null);
+            return;
+        }
+
+        setPreviewPlayingId(personaName);
+        const greeting =
+            gender === "female"
+                ? `Greetings! I am ${personaName}. My voice is clear, sweet, and tuned to guide you.`
+                : `Greetings. I am ${personaName}. My voice is steady, analytical, and ready for navigation.`;
+
+        speakCelestialResponse(greeting, {
+            targetGender: gender,
+            assistantName: personaName,
+            onStart: () => setPreviewPlayingId(personaName),
+            onEnd: () => setPreviewPlayingId(null),
+            onError: () => setPreviewPlayingId(null),
+        });
+    };
 
     if (authLoading) {
         return (
@@ -141,8 +173,10 @@ function Customize() {
             if (selectedMode === "preset") {
                 formData.append("assistantName", activePreset.name);
                 formData.append("assistantImage", activePreset.image);
+                formData.append("assistantGender", activePreset.gender);
             } else {
                 formData.append("assistantName", customName.trim());
+                formData.append("assistantGender", customGender);
                 if (customImageFile) {
                     formData.append("assistantImage", customImageFile);
                 } else if (customImagePreview) {
@@ -286,13 +320,44 @@ function Customize() {
                                         <h4 className="text-lg sm:text-xl font-bold text-[#E8C98A] tracking-wide">
                                             {preset.name}
                                         </h4>
-                                        <span className="text-[10px] text-[#D4AF72]/70 uppercase tracking-widest font-mono">
-                                            Fixed Name
+                                        <span className="text-[10px] text-[#D4AF72] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-[#D4AF72]/15 border border-[#D4AF72]/30">
+                                            {preset.gender === "male" ? "♂ Male Voice" : "♀ Female Voice"}
                                         </span>
                                     </div>
                                     <p className="text-xs sm:text-sm text-gray-300 leading-relaxed line-clamp-2">
                                         {preset.tagline}
                                     </p>
+
+                                    {/* Interactive Voice Preview Button */}
+                                    <div className="pt-2 flex items-center justify-between">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handlePreviewVoice(preset.gender, preset.name);
+                                            }}
+                                            className={`inline-flex items-center gap-1.5 text-[11px] px-3 py-1 rounded-full border transition-all font-semibold cursor-pointer shadow-sm active:scale-95 ${
+                                                previewPlayingId === preset.name
+                                                    ? "bg-[#D4AF72] text-black border-[#D4AF72] animate-pulse"
+                                                    : "bg-[#D4AF72]/15 text-[#E8C98A] border-[#D4AF72]/30 hover:bg-[#D4AF72]/25"
+                                            }`}
+                                        >
+                                            {previewPlayingId === preset.name ? (
+                                                <>
+                                                    <FiVolumeX size={12} />
+                                                    <span>Stop Audio</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <FiVolume2 size={12} />
+                                                    <span>Hear Voice</span>
+                                                </>
+                                            )}
+                                        </button>
+                                        <span className="text-[10px] text-gray-400 italic">
+                                            {preset.gender === "female" ? "Crisp & Sweet" : "Steady & Grounded"}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         );
@@ -405,6 +470,69 @@ function Customize() {
                                             : "border-white/20 hover:border-white/40"
                                     }`}
                                 />
+                            </div>
+
+                            {/* Voice Profile Selector for Custom Persona */}
+                            <div>
+                                <label className="block text-xs font-medium text-[#E8C98A] mb-1.5">
+                                    Voice Gender Profile <span className="text-red-400">*</span>
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedMode("custom");
+                                            setCustomGender("female");
+                                        }}
+                                        className={`py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
+                                            customGender === "female"
+                                                ? "bg-[#D4AF72] border-[#D4AF72] text-black shadow-[0_0_15px_rgba(212,175,114,0.4)]"
+                                                : "bg-white/5 border-white/15 text-gray-300 hover:border-[#D4AF72]/40 hover:bg-white/10"
+                                        }`}
+                                    >
+                                        <span>♀ Female Voice</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedMode("custom");
+                                            setCustomGender("male");
+                                        }}
+                                        className={`py-2 px-3 rounded-xl border flex items-center justify-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
+                                            customGender === "male"
+                                                ? "bg-[#D4AF72] border-[#D4AF72] text-black shadow-[0_0_15px_rgba(212,175,114,0.4)]"
+                                                : "bg-white/5 border-white/15 text-gray-300 hover:border-[#D4AF72]/40 hover:bg-white/10"
+                                        }`}
+                                    >
+                                        <span>♂ Male Voice</span>
+                                    </button>
+                                </div>
+                                <div className="flex items-center justify-between pt-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePreviewVoice(customGender, customName.trim() || "Custom Persona")}
+                                        className={`inline-flex items-center gap-1.5 text-[11px] px-3 py-1 rounded-full border transition-all font-semibold cursor-pointer shadow-sm active:scale-95 ${
+                                            previewPlayingId === (customName.trim() || "Custom Persona")
+                                                ? "bg-[#D4AF72] text-black border-[#D4AF72] animate-pulse"
+                                                : "bg-[#D4AF72]/15 text-[#E8C98A] border-[#D4AF72]/30 hover:bg-[#D4AF72]/25"
+                                        }`}
+                                    >
+                                        {previewPlayingId === (customName.trim() || "Custom Persona") ? (
+                                            <>
+                                                <FiVolumeX size={12} />
+                                                <span>Stop Audio</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FiVolume2 size={12} />
+                                                <span>Test {customGender === "female" ? "Female Voice (Elara Style)" : "Male Voice (Orion Style)"}</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                    Associates this custom assistant with a dedicated {customGender} vocal synthesizer profile.
+                                </p>
                             </div>
                         </div>
                     </div>
