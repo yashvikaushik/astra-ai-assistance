@@ -2,6 +2,16 @@ import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import genToken from "../config/token.js";
 
+const getCookieOptions = () => {
+    const isProduction = process.env.NODE_ENV === "production";
+    return {
+        httpOnly: true,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+        sameSite: isProduction ? "none" : "lax",
+        secure: isProduction,
+    };
+};
+
 export const signup=async (req,res)=>{
     try{
     const {name,email,password}=req.body;
@@ -36,12 +46,7 @@ export const signup=async (req,res)=>{
 
     const token = genToken(user._id);
 
-    res.cookie("token", token, {
-        httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-        sameSite: "strict",
-        secure: process.env.NODE_ENV === "production"
-    });
+    res.cookie("token", token, getCookieOptions());
 
     res.status(201).json(
         {
