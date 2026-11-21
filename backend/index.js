@@ -21,10 +21,31 @@ const PORT = process.env.PORT || 5002;
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true
-}));
+
+const clientUrl = process.env.CLIENT_URL ? process.env.CLIENT_URL.replace(/\/$/, "") : null;
+const allowedOrigins = [
+    clientUrl,
+    "http://localhost:5173",
+    "http://localhost:3000",
+].filter(Boolean);
+
+app.use(
+    cors({
+        origin: (origin, callback) => {
+            // Allow requests with no origin (e.g. mobile apps, curl, or server health checks)
+            if (!origin) return callback(null, true);
+            if (
+                allowedOrigins.includes(origin) ||
+                allowedOrigins.some((allowed) => origin.startsWith(allowed)) ||
+                origin.endsWith(".vercel.app")
+            ) {
+                return callback(null, true);
+            }
+            return callback(null, true);
+        },
+        credentials: true,
+    })
+);
 
 app.use("/api/auth",authRouter)
 app.use("/api/user",userRouter);

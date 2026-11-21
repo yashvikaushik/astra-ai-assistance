@@ -4,7 +4,7 @@ import axios from "axios";
 
 export const UserDataContext = createContext(null);
 
-const serverUrl = "http://localhost:5002";
+const serverUrl = import.meta.env.VITE_SERVER_URL || "http://localhost:5002";
 
 // Exported as a named export for standalone usage
 export const geminiResponse = async (command, sessionId = null) => {
